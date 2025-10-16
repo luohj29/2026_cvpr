@@ -6,6 +6,7 @@
 - `sora.py` - Sora AI图片抓取脚本  
 - `utils.py` - 公共工具函数库
 - `test.py` - 测试脚本
+- -*_final.json - 最终包含本地图片路径的JSON文件
 
 ## 快速使用
 
