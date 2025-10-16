@@ -2,6 +2,9 @@ import json
 import os
 import requests
 import time
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 def filter_duplicate_from_json(input_path, output_path):
     try:
@@ -90,7 +93,143 @@ def download_images_from_json(json_path, out_json_path, save_dir="images"):
     with open(out_json_path, "w", encoding="utf-8") as f:
         json.dump(new_data, f, ensure_ascii=False, indent=2)
     print(f"✅ 下载完成，信息已保存到 {out_json_path}")
-        
+
+# ========== 从 jimeng.py 搬运的函数 ==========
+
+def pattern_match(driver, wait, patterns):
+    """
+    等待并查找匹配CSS选择器的所有元素
+    """
+    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, patterns)))
+    items = driver.find_elements(By.CSS_SELECTOR, patterns)
+    return items
+
+
+def pattern_click(driver, wait, item):
+    """
+    使用JavaScript点击元素
+    """
+    driver.execute_script("arguments[0].click();", item)
+
+
+def fetch_text(driver, wait, TEXT_PATTERN=".prompt-value-container-HNplhY"):
+    """
+    从详情页中提取描述文字
+    - 自动等待元素出现
+    - 捕获异常并返回 None
+    """
+    try:
+        # 等待元素加载完成（最多等待10秒）
+        elem = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, TEXT_PATTERN))
+        )
+
+        # 获取并清理文本
+        text = elem.text.strip()
+        if not text:
+            print("⚠️ 描述元素存在但内容为空。")
+            return None
+
+        return text
+
+    except TimeoutException:
+        print(f"❌ 等待 {TEXT_PATTERN} 超时，未找到描述。")
+        return None
+    except NoSuchElementException:
+        print(f"❌ 页面上未找到 {TEXT_PATTERN} 元素。")
+        return None
+
+
+def fetch_imgsrc(driver, wait, img_pattern=".image-C3mkAg"):
+    """
+    从指定元素中提取图片的 src
+    - 支持 item 本身是 img 或外层容器
+    - 自动尝试 src / data-src 属性
+    """
+    try:
+        # 等待元素加载完成（最多等待10秒）
+        elem = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, img_pattern))
+        )
+
+        # 获取并清理图片源
+        img_src = elem.get_attribute("src") or elem.get_attribute("data-src")
+        if not img_src:
+            print("⚠️ 图片元素存在但没有 src 或 data-src 属性。")
+            return None
+
+        return img_src
+
+    except TimeoutException:
+        print(f"❌ 等待 {img_pattern} 超时，未找到描述。")
+        return None
+    except NoSuchElementException:
+        print(f"❌ 页面上未找到 {img_pattern} 元素。")
+        return None
+
+
+def smart_scroll(driver):
+    """
+    智能滚动页面
+    """
+    # 自动寻找滚动容器
+    containers = driver.find_elements(By.XPATH, "//*[contains(@style,'overflow') or contains(@class,'scroll')]")
+    for c in containers:
+        try:
+            scroll_height = driver.execute_script("return arguments[0].scrollHeight - arguments[0].clientHeight;", c)
+            if scroll_height > 100:  # 有滚动条的容器
+                driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", c)
+                print("✅ 已滚动容器：", c.get_attribute("class"))
+                return True
+        except Exception:
+            continue
+
+    # 兜底方案：尝试滚动 window
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    print("⚠️ 未找到滚动容器，退回到 window 滚动")
+    return False
+
+def save_to_json(data, filename="images_data.json"):
+    """
+    使用附加方法将list保存为json文件
+    """
+    # 如果文件存在，先读取现有数据
+    existing_data = []
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ 读取现有文件失败，将创建新文件: {e}")
+            existing_data = []
+    
+    # 合并现有数据和新数据
+    if isinstance(existing_data, list):
+        existing_data.extend(data)
+    else:
+        existing_data = data
+    
+    # 写入合并后的数据
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(existing_data, f, ensure_ascii=False, indent=2)
+    print(f"✅ 数据已追加保存到 {filename}，共 {len(existing_data)} 条记录")
+
+
+def load_data_from_json(filename="images_data.json"):
+    """
+    从JSON文件加载数据
+    """
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ 读取现有文件失败，将创建新文件: {e}")
+            existing_data = []
+    else:
+        existing_data = []
+    return existing_data
+
 if __name__ == "__main__":
     # 示例用法
     # filter_duplicate_from_json("images_data.json", "images_data_dedup.json")
