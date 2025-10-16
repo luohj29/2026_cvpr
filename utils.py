@@ -236,7 +236,7 @@ if __name__ == "__main__":
     # download_images_from_json("jimeng_images_data_dedup.json", "jimeng_images_data_final.json", save_dir="jimeng_images")
     in_json= "jimeng_new_data.json"
     # out_json = "jimeng_inew_data_filtered.json"
-    final_json = "jimeng_new_data_final.json"
+    final_json = "jimeng_new_data_final1.json"
     my_save_dir = "jimeng_images_new"
     # filter_duplicate_from_json(in_json, out_json)
     download_images_from_json(in_json, final_json, save_dir=my_save_dir)
