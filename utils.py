@@ -14,7 +14,7 @@ def filter_duplicate_from_json(input_path, output_path):
         seen = set()
         unique_data = []
         for item in data:
-            desc = item.get('description')
+            desc = item.get('prompt')
             if desc and desc not in seen:
                 seen.add(desc)
                 unique_data.append(item)
@@ -61,7 +61,7 @@ def download_image(img_url, save_dir="images", file_name=None):
 
     except Exception as e:
         print(f"❌ 下载失败: {img_url}\n  错误: {e}")
-        return None
+        raise e
 
 
 def append_json(data_list, json_path):
@@ -77,23 +77,56 @@ def append_json(data_list, json_path):
         json.dump(existing_data, f, ensure_ascii=False, indent=2)
     print(f"✅ 数据已追加保存到 {json_path}，共 {len(existing_data)} 条记录")
     
-def download_images_from_json(json_path, out_json_path, save_dir="images"):
+    
+def download_images_from_json(json_path, out_json_path, prefix:str, save_dir="images"):
     items = json.load(open(json_path, "r", encoding="utf-8"))
     new_data = []
     for idx, item in enumerate(items):
         if idx % 20 == 0:
             append_json(new_data, out_json_path)
             new_data = []
-            time.sleep(15)
+            time.sleep(5)
         img_url = item.get("img_src")
         if img_url:
-            file_name = "jimeng{:04d}".format(idx) + os.path.splitext(img_url.split("/")[-1].split("?")[0])[-1]
-            download_image(img_url, save_dir=save_dir, file_name=file_name)
-            new_data.append({"id": idx, "description": item.get("description"), "img_src": img_url, "local_path": os.path.join(save_dir, file_name)})
-    with open(out_json_path, "w", encoding="utf-8") as f:
-        json.dump(new_data, f, ensure_ascii=False, indent=2)
+            postfix = img_url.split("@")[-1] if "@" in img_url else "webp"
+            file_name = prefix + "{:04d}".format(idx) + os.path.splitext(img_url.split("/")[-1].split("?")[0])[-1] + "." + postfix
+            # file_name = "jimeng{:04d}".format(idx) + os.path.splitext(img_url.split("/")[-1].split("?")[0])[-1]
+            try:
+                download_image(img_url, save_dir=save_dir, file_name=file_name)
+                new_data.append({"id": idx, "description": item.get("description"), "img_src": img_url, "local_path": os.path.join(save_dir, file_name)})
+            except Exception as e:
+                print(f"❌ 下载图片失败: {img_url}\n  错误: {e}")
+                new_data.append({"id": idx, "description": item.get("description"), "img_src": img_url, "local_path": "NULL"})
+    append_json(new_data, out_json_path)
     print(f"✅ 下载完成，信息已保存到 {out_json_path}")
 
+
+
+def fixup(in_path, out_path, prefix, save_dir):
+    in_data = json.load(open(in_path, "r", encoding="utf-8"))
+    out_data = []
+    idx = 0
+    for _ in in_data:
+        img_url = _["img_src"]
+        if img_url is None:
+            _.update({"local_path": "NULL"})
+            continue
+        # postfix = img_url.split("@")[-1] if "@" in img_url else "webp"
+        file_name = "jimeng{:04d}".format(idx) + os.path.splitext(img_url.split("/")[-1].split("?")[0])[-1]
+        # file_name = prefix + "{:04d}".format(idx) + os.path.splitext(img_url.split("/")[-1].split("?")[0])[-1] + "." + postfix
+        path = os.path.join(save_dir, file_name)
+        if os.path.exists(path):
+            _.update({"local_path": path})
+            _.update({"id": len(out_data)})
+            idx += 1
+        else:
+            _.update({"local_path": "NULL"})
+            _.update({"id": len(out_data)})
+            idx += 1
+        out_data.append(_)
+    json.dump(out_data, open(out_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    print(f"✅ 修正完成，信息已保存到 {out_path}")
+        
 # ========== 从 jimeng.py 搬运的函数 ==========
 
 def pattern_match(driver, wait, patterns):
@@ -230,14 +263,62 @@ def load_data_from_json(filename="images_data.json"):
         existing_data = []
     return existing_data
 
+
+def download_rest_and_fix(json_path, save_dir, pre_fix):
+    data = json.load(open(json_path, "r", encoding="utf-8"))
+    rest = []
+    for i, item in enumerate(data):
+        filename = pre_fix + "{:04d}".format(i)
+        if pre_fix == "recraft":
+            postfix = item["img_src"].split("@")[-1] if "@" in item["img_src"] else "webp"
+            filename = filename + "." + postfix
+        elif pre_fix == "jimeng":
+            filename = filename + ".webp"
+        elif pre_fix == "openart":
+            filename = filename + os.path.splitext(item["img_src"].split("/")[-1].split("?")[0])[-1]
+        path = os.path.join(save_dir, filename)
+        if not os.path.exists(path):
+            try:
+                download_image(item["img_src"], save_dir=save_dir, file_name=filename)
+                item["local_path"] = path
+            except Exception as e:
+                print(f"❌ 下载图片失败: {item['img_src']}\n  错误: {e}")
+                rest.append(item)
+    json.dump(data, open(json_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    print(f"✅ 下载完成，未下载成功的图片数量: {len(rest)}")
+    print(rest)
+    return             
+        
+
+    
+DATASET = "openart"
 if __name__ == "__main__":
-    # 示例用法
-    # filter_duplicate_from_json("images_data.json", "images_data_dedup.json")
-    # download_images_from_json("jimeng_images_data_dedup.json", "jimeng_images_data_final.json", save_dir="jimeng_images")
-    in_json= "jimeng_new_data.json"
-    # out_json = "jimeng_inew_data_filtered.json"
-    final_json = "jimeng_new_data_final1.json"
-    my_save_dir = "jimeng_images_new"
-    # filter_duplicate_from_json(in_json, out_json)
-    download_images_from_json(in_json, final_json, save_dir=my_save_dir)
+    # in_json = "openart_all.json"
+    # in_json = "openart_data_final.json"
+    # data = json.load(open(in_json, "r", encoding="utf-8"))
+    # out_data = []
+    # for i, item in enumerate(data):
+    #     file_name = "{}{:04d}".format(DATASET, i) + "." + os.path.splitext(item["img_src"].split(".")[-1])[0]
+    #     print(file_name)
+    #     try:
+    #         download_image(item["img_src"], save_dir=DATASET, file_name=file_name)
+    #         out_data.append({
+    #             "id": i,
+    #             "description": item["description"],
+    #             "img_src": item["img_src"],
+    #             "local_path": os.path.join(DATASET, file_name)
+    #         })
+    #     except Exception as e:
+    #         print(f"❌ 下载图片失败: {item['img_src']}\n  错误: {e}")
+    #         out_data.append({
+    #             "id": i,
+    #             "description": item["description"],
+    #             "img_src": item["img_src"],
+    #             "local_path": "NULL"
+    #         })
+    # json.dump(data, open("openart_data_filtered.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    # json.dump(out_data, open(in_json, "w", encoding="utf-8"), ensure_ascii=False, indent=2_)
+    out_json = "openart_data_final.json"
+    download_rest_and_fix(out_json, DATASET, "openart")
+    
 

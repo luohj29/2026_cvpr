@@ -5,6 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support import expected_conditions as EC
+from fake_useragent import UserAgent
 from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
@@ -16,6 +17,9 @@ import json
 import time
 import random
 import os
+
+
+user_agent = UserAgent().random
 
 # ------------------ 配置 ------------------
 START_URL = "https://sora.chatgpt.com/explore/images"
@@ -33,6 +37,7 @@ MAIN_IMG_XPATH = "//img[contains(@src, 'https://videos.openai.com')]"
 options = Options()
 # 你使用的是 attach 模式（手动启动 chrome --remote-debugging-port=9222）
 options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+options.add_argument(f"user-agent={user_agent}")
 
 # 启动 driver（attach 模式）
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
@@ -99,6 +104,7 @@ while scroll_steps < MAX_SCROLL_STEPS and no_new_count < NO_NEW_LIMIT:
                     "let a = arguments[0].closest('a'); return a ? a.href : null;",
                     item,
                 )
+                print(f"  处理第 {idx + 1} 个图片，链接: {h_ref}")
             except Exception:
                 h_ref = None
 
@@ -114,7 +120,7 @@ while scroll_steps < MAX_SCROLL_STEPS and no_new_count < NO_NEW_LIMIT:
             # 等待详情页加载图片——给足够时间
             detail_wait = WebDriverWait(driver, 10)
             try:
-                img_elem = detail_wait.until(EC.presence_of_element_located((By.XPATH, IN_IMG_XPATH)))
+                img_elem = detail_wait.until(EC.presence_of_element_located((By.XPATH, "img[alt='Generated image']")))
             except TimeoutException:
                 print("❌ 详情页图片加载超时，关闭标签并继续。")
                 # 关闭并回到主页
@@ -173,10 +179,7 @@ while scroll_steps < MAX_SCROLL_STEPS and no_new_count < NO_NEW_LIMIT:
         finally:
             # 无论成功失败都关闭详情页并回到主窗口（仅当新 tab 存在时）
             # 返回START_URL
-            if len(driver.window_handles) > 1:
-                driver.close()
-                driver.switch_to.window(driver.window_handles[0])
-                time.sleep(1)
+            driver.get(START_URL)
                 
 
     # 更新 no_new_count 逻辑
